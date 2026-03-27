@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getAllExpenses } from '../utils/googleSheets'
+import { getAllExpenses, updateExpense } from '../utils/googleSheets'
 import { CATEGORIES, CATEGORY_COLORS } from '../config'
 
 const fmt$ = (n) => `$${parseFloat(n).toFixed(2)}`
@@ -9,18 +9,101 @@ const fmtDate = (s) => {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function EditModal({ expense, onSave, onClose }) {
+  const [form, setForm] = useState({
+    date:        expense.date,
+    amount:      expense.amount,
+    category:    expense.category,
+    description: expense.description,
+    receiptName: expense.receiptName,
+    receiptLink: expense.receiptLink,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState(null)
+
+  const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateExpense(expense.id, form)
+      onSave()
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      zIndex: 200, padding: '0 0 env(safe-area-inset-bottom)',
+    }}>
+      <div style={{
+        background: 'white', borderRadius: '16px 16px 0 0',
+        width: '100%', maxWidth: 640, padding: 20,
+        maxHeight: '90vh', overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Edit Expense</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+        </div>
+
+        {error && <div className="msg error">{error}</div>}
+
+        <div className="form-group">
+          <label>Date</label>
+          <input type="date" value={form.date} onChange={set('date')} />
+        </div>
+        <div className="form-group">
+          <label>Amount</label>
+          <div className="amount-wrap">
+            <span className="prefix">$</span>
+            <input type="number" inputMode="decimal" min="0" step="0.01" value={form.amount} onChange={set('amount')} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Category</label>
+          <select value={form.category} onChange={set('category')}>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label>Description</label>
+          <input type="text" value={form.description} onChange={set('description')} />
+        </div>
+        {form.receiptLink && (
+          <div className="form-group">
+            <label>Receipt</label>
+            <a href={form.receiptLink} target="_blank" rel="noopener noreferrer" className="receipt-link">
+              📎 {form.receiptName || 'View receipt'}
+            </a>
+          </div>
+        )}
+
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? <><span className="spinner" />Saving…</> : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function ExpenseTable({ refreshKey }) {
-  const [expenses, setExpenses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', category: '', hasReceipt: 'all' })
+  const [expenses, setExpenses]   = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState(null)
+  const [editing, setEditing]     = useState(null)
+  const [filters, setFilters]     = useState({ dateFrom: '', dateTo: '', category: '', hasReceipt: 'all' })
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const data = await getAllExpenses()
-      setExpenses(data.reverse()) // newest first
+      setExpenses(data.reverse())
     } catch (err) {
       setError(err.message)
     } finally {
@@ -45,6 +128,14 @@ export default function ExpenseTable({ refreshKey }) {
 
   return (
     <div>
+      {editing && (
+        <EditModal
+          expense={editing}
+          onSave={() => { setEditing(null); load() }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
       <div className="card">
         <div className="card-title">Filters</div>
         <div className="filters">
@@ -111,6 +202,7 @@ export default function ExpenseTable({ refreshKey }) {
                   <th>Category</th>
                   <th>Description</th>
                   <th>Receipt</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -131,6 +223,15 @@ export default function ExpenseTable({ refreshKey }) {
                       {exp.receiptLink
                         ? <a className="receipt-link" href={exp.receiptLink} target="_blank" rel="noopener noreferrer">📎 {exp.receiptName || 'View'}</a>
                         : <span className="no-receipt">—</span>}
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => setEditing(exp)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 15, padding: '4px 6px' }}
+                        title="Edit"
+                      >
+                        ✏️
+                      </button>
                     </td>
                   </tr>
                 ))}

@@ -31,6 +31,20 @@ export async function appendExpense({ date, amount, category, description, recei
   return res.json()
 }
 
+export async function updateExpense(rowNum, { date, amount, category, description, receiptName, receiptLink }) {
+  const values = [[date, amount, category, description, receiptName || '', receiptLink || '']]
+  const res = await apiFetch(
+    `${BASE}/values/${SHEET}!A${rowNum}:F${rowNum}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    }
+  )
+  if (!res.ok) throw new Error('Failed to update expense')
+  return res.json()
+}
+
 export async function getAllExpenses() {
   const res = await apiFetch(`${BASE}/values/${SHEET}`)
   const data = await res.json()
